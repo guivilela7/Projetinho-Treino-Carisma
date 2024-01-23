@@ -9,6 +9,7 @@ import difflib
 import cv2 as cv
 import PySimpleGUI as psg
 import time
+import re
 
 
 path_to_tesseract = "./Tesseract/tesseract.exe"
@@ -66,6 +67,10 @@ while True:
         ret, img = cv.threshold(img, 204, 255, cv.THRESH_BINARY_INV)
 
         text = pytesseract.image_to_string(img, config="-c tessedit_char_whitelist=' abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ?-,'")
+
+        if re.search("Try some", text):
+            text = re.sub("^.*?\n", "", text)
+
 
         fuzz.SequenceMatcher = difflib.SequenceMatcher
         result = process.extractOne(text, all_quotes)
