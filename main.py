@@ -1,7 +1,7 @@
 from screeninfo import get_monitors
 from mss import mss
 import mss.tools
-import keyboard
+import keyboard as direct_keyboard
 from pytesseract import pytesseract
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
@@ -10,9 +10,11 @@ import cv2 as cv
 import PySimpleGUI as psg
 import time
 import re
+import threading
+from pynput import keyboard as pykey
 
 
-path_to_tesseract = "./Tesseract/tesseract.exe"
+path_to_tesseract = "./_internal/Tesseract/tesseract.exe"
 
 all_quotes = ["Some weather we're having, huh?", "Hey hivekin, can I bug you for a moment?",
               "Sometimes I have really deep thoughts about life and stuff.", "So, how's work?",
@@ -28,7 +30,7 @@ pytesseract.tesseract_cmd = path_to_tesseract
 def get_area_primary_monitor():
     for m in get_monitors():
         if m.is_primary:
-            height = m.height * 0.41
+            height = m.height * 0.405
             width = m.width * 0.40
             return height, width
 
@@ -54,47 +56,68 @@ def grayscale(imgPath):
     return grayIMG
 
 
-layout = [[psg.Button("Start")], [psg.Button(button_text="Stop", visible=False)], [psg.Button("Close")]]
+def checkKey(key):
+    global on
+    global window
+    if key == pykey.Key.f8:
+        on = not on
+        if on:
+            window["Press F8 to Start/Stop"].update(button_color="green")
+        else:
+            window["Press F8 to Start/Stop"].update(button_color="#283b5b")
 
-window = psg.Window("Auto Charisma", layout, resizable=True)
+
+def running():
+    global on
+    global threadEvent
+    area = get_area_primary_monitor()
+    while not threadEvent.is_set():
+        if on:
+            image_path = take_screenshot(int(area[0]), int(area[1]))
+            img = grayscale(image_path)
+            ret, img = cv.threshold(img, 204, 255, cv.THRESH_BINARY_INV)
+
+            text = pytesseract.image_to_string(img, config="-c tessedit_char_whitelist=' abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ?-,'")
+
+            if re.search("Try some", text):
+                text = re.sub("^.*?\n", "", text)
+
+            fuzz.SequenceMatcher = difflib.SequenceMatcher
+            result = process.extractOne(text, all_quotes)
+
+            if result[1] > 80:
+                direct_keyboard.write(result[0])
+                time.sleep(0.2)
+                direct_keyboard.press("enter")
+
+
+def gui():
+    global threadEvent
+    global layout
+    global window
+
+    while True:
+        event, values = window.read(timeout=100)
+        if event == psg.WIN_CLOSED or event == "Close":
+            threadEvent.set()
+            window.close()
+            break
+
+
+threadEvent = threading.Event()
 
 on = False
 
-while True:
-    if on:
-        image_path = take_screenshot(int(area[0]), int(area[1]))
-        img = grayscale(image_path)
-        ret, img = cv.threshold(img, 204, 255, cv.THRESH_BINARY_INV)
+layout = [[psg.Button(button_text="Press F8 to Start/Stop", size=(30, 2))], [psg.Button("Close", size=(30, 2))]]
 
-        text = pytesseract.image_to_string(img, config="-c tessedit_char_whitelist=' abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ?-,'")
+window = psg.Window("Auto Charisma", layout, resizable=True)
 
-        if re.search("Try some", text):
-            text = re.sub("^.*?\n", "", text)
+listener = pykey.Listener(on_press=checkKey)
+run = threading.Thread(target=running, daemon=True)
+guiRun = threading.Thread(target=gui, daemon=True)
+guiRun.start()
+time.sleep(1)
+listener.start()
+run.start()
 
-
-        fuzz.SequenceMatcher = difflib.SequenceMatcher
-        result = process.extractOne(text, all_quotes)
-
-        if result[1] > 80:
-            keyboard.write(result[0])
-            time.sleep(1)
-            keyboard.press("enter")
-
-    event, values = window.read(timeout=1000)
-    if event == psg.WIN_CLOSED or event == "Close":
-        window.close()
-        break
-
-    if event == "Start":
-        window["Start"].update(visible=False)
-        window["Stop"].update(visible=True)
-        on = True
-        area = get_area_primary_monitor()
-
-    if event == "Stop":
-        window["Stop"].update(visible=False)
-        window["Start"].update(visible=True)
-        on = False
-
-window.close()
-
+guiRun.join()
