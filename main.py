@@ -38,7 +38,7 @@ def get_area_primary_monitor():
 def take_screenshot(top, left):
     with mss.mss() as sct:
         # The screen part to capture
-        monitor = {"top": top, "left": left, "width": 400, "height": 35}
+        monitor = {"top": top, "left": left, "width": 400, "height": 50}
         output = "sct-{top}x{left}_{width}x{height}.png".format(**monitor)
 
         # Grab the data
